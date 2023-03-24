@@ -1,0 +1,171 @@
+---
+version: '1'
+networks:
+  default:
+    name: cp-kerberos-lb
+
+services:
+  kafka-kdc-server:
+    hostname: 'kafka-kdc-server'
+    container_name: 'kafka-kdc-server'
+    build: ./kdc-docker
+    volumes:
+      # This is needed otherwise there won't be enough entropy to generate a new kerberos realm
+      - /dev/urandom:/dev/random
+      - "${PWD}/keytabs:/keytabs"
+    ports:
+      - "749:749"
+      - "88:88/udp"
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  broker1:
+    image: confluentinc/cp-server:7.3.0
+    hostname: broker1
+    container_name: broker1
+    depends_on:
+      - zookeeper
+      - kafka-kdc-server
+    ports:
+      - "9091:9091"
+      - "8881:8881"
+    environment:
+      ZOOKEEPER_SASL_ENABLED: false
+      KAFKA_BROKER_ID: 1
+      KAFKA_JMX_PORT: 8881
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER:PLAINTEXT,LISTENER_EXTERNAL:PLAINTEXT,SECURELISTENER:SASL_PLAINTEXT,SECURELBLISTENER:SASL_PLAINTEXT
+      KAFKA_LISTENERS: LISTENER_DOCKER://:29091,LISTENER_EXTERNAL://:9091,SECURELISTENER://broker1:9991,SECURELBLISTENER://broker1:9881
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER://broker1:29091,LISTENER_EXTERNAL://localhost:9091,SECURELISTENER://broker1:9991,SECURELBLISTENER://broker1:9991
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER
+      KAFKA_SASL_KERBEROS_SERVICE_NAME: kafka
+      KAFKA_LISTENER_NAME_SECURELISTENER_GSSAPI_SASL_JAAS_CONFIG: 'com.sun.security.auth.module.Krb5LoginModule required \
+useKeyTab=true \
+storeKey=true \
+serviceName=kafka \
+keyTab="/keytabs/broker1.keytab" \
+principal="kafka/broker1.cp-kerberos-lb@EXAMPLE.COM";'
+      KAFKA_LISTENER_NAME_SECURELBLISTENER_GSSAPI_SASL_JAAS_CONFIG: 'com.sun.security.auth.module.Krb5LoginModule required \
+useKeyTab=true \
+storeKey=true \
+serviceName=kafka \
+keyTab="/keytabs/broker1.keytab" \
+principal="kafka/haproxy.cp-kerberos-lb@EXAMPLE.COM";'
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_JMX_HOSTNAME: broker1
+      KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker1:29091
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 2
+      CONFLUENT_METRICS_ENABLE: 'true'
+      CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
+    volumes:
+      - "${PWD}/keytabs:/keytabs"
+      - "${PWD}/krb5.conf:/etc/krb5.conf"
+
+  broker2:
+    image: confluentinc/cp-server:7.3.0
+    hostname: broker2
+    container_name: broker2
+    depends_on:
+      - zookeeper
+      - kafka-kdc-server
+    ports:
+      - "9092:9092"
+      - "8882:8882"
+    environment:
+      ZOOKEEPER_SASL_ENABLED: false
+      KAFKA_BROKER_ID: 2
+      KAFKA_JMX_PORT: 8882
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: LISTENER_DOCKER:PLAINTEXT,LISTENER_EXTERNAL:PLAINTEXT,SECURELISTENER:SASL_PLAINTEXT,SECURELBLISTENER:SASL_PLAINTEXT
+      KAFKA_LISTENERS: LISTENER_DOCKER://:29092,LISTENER_EXTERNAL://:9092,SECURELISTENER://broker2:9992,SECURELBLISTENER://broker2:9882
+      KAFKA_ADVERTISED_LISTENERS: LISTENER_DOCKER://broker2:29092,LISTENER_EXTERNAL://localhost:9092,SECURELISTENER://broker2:9992,SECURELBLISTENER://broker2:9992
+      KAFKA_INTER_BROKER_LISTENER_NAME: LISTENER_DOCKER
+      KAFKA_SASL_KERBEROS_SERVICE_NAME: kafka
+      KAFKA_LISTENER_NAME_SECURELISTENER_GSSAPI_SASL_JAAS_CONFIG: 'com.sun.security.auth.module.Krb5LoginModule required \
+useKeyTab=true \
+storeKey=true \
+serviceName=kafka \
+keyTab="/keytabs/broker2.keytab" \
+principal="kafka/broker2.cp-kerberos-lb@EXAMPLE.COM";'
+      KAFKA_LISTENER_NAME_SECURELBLISTENER_GSSAPI_SASL_JAAS_CONFIG: 'com.sun.security.auth.module.Krb5LoginModule required \
+useKeyTab=true \
+storeKey=true \
+serviceName=kafka \
+keyTab="/keytabs/broker2.keytab" \
+principal="kafka/haproxy.cp-kerberos-lb@EXAMPLE.COM";'
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 2
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 2
+      KAFKA_JMX_HOSTNAME: broker2
+      KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker2:29092
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 2
+      CONFLUENT_METRICS_ENABLE: 'true'
+      CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
+    volumes:
+      - "${PWD}/keytabs:/keytabs"
+      - "${PWD}/krb5.conf:/etc/krb5.conf"
+
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:7.3.0
+    hostname: control-center
+    container_name: control-center
+    depends_on:
+      - broker1
+      - broker2
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker1:29091,broker2:29092'
+      CONTROL_CENTER_CONNECT_CONNECT-DEFAULT_CLUSTER: 'connect:8083'
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+      CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+      CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+      PORT: 9021
+
+  kafkaclient1:
+    image: confluentinc/cp-server:7.3.0
+    hostname: kafkaclient1
+    container_name: kafkaclient1
+    depends_on:
+      - kafka-kdc-server
+    volumes:
+      - "${PWD}:/apps"
+      - "${PWD}/keytabs:/keytabs"
+      - "${PWD}/krb5.conf:/etc/krb5.conf"
+    working_dir: /apps
+    command: /bin/bash
+    tty: true
+
+  loadbalancer:
+    hostname: haproxy
+    container_name: haproxy
+    image: haproxytech/haproxy-alpine:2.7
+    volumes:
+      - "${PWD}/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"
+    sysctls:
+      - net.ipv4.ip_unprivileged_port_start=0
+    ports:
+      - "9001:9001"
+      - "9101:9101"
+      - "8404:8404"
